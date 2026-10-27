@@ -7,7 +7,7 @@ const formatSec = (sec: number) => sec.toFixed(2);
 export class Timeline {
   private readonly preview: Preview;
   private readonly playButton: HTMLButtonElement;
-  private readonly time: HTMLSpanElement;
+  private readonly timeText = new Text();
   private readonly seekBar: HTMLInputElement;
   private readonly lanes: HTMLDivElement;
   private readonly videoLane: HTMLDivElement;
@@ -47,7 +47,7 @@ export class Timeline {
     `;
     const pick = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
     this.playButton = pick('[data-testid=play]');
-    this.time = pick('[data-testid=time]');
+    pick('[data-testid=time]').append(this.timeText);
     this.seekBar = pick('[data-testid=seek]');
     this.lanes = pick('[data-testid=lanes]');
     this.videoLane = pick('[data-testid=video-lane]');
@@ -147,9 +147,16 @@ export class Timeline {
     const total = this.totalSec;
     const frame = Math.round(this.t * this.fps);
     const totalFrames = Math.round(total * this.fps);
-    this.time.textContent = `${formatSec(this.t)} / ${formatSec(total)} s (${frame} / ${totalFrames} f)`;
+    // textContent に代入するとテキストノードが作り直される。同じノードを保ち、data だけを書き換える
+    this.timeText.data = `${formatSec(this.t)} / ${formatSec(total)} s (${frame} / ${totalFrames} f)`;
     this.seekBar.value = String(this.t);
     this.playhead.style.left = `${(this.t / total) * 100}%`;
+  }
+
+  // 再生中にボタンのラベルを毎フレーム書き換えると、Safari で停止の click が届かない。
+  // WebKit は mousedown 時に押されたテキストノードを記憶し、
+  // mouseup 時にそのノードが文書から外れていると click を発火しないため。
+  private updatePlayLabel(): void {
     this.playButton.textContent = this.playing ? '停止' : '再生';
   }
 
@@ -172,6 +179,7 @@ export class Timeline {
     if (this.t >= this.totalSec) this.t = 0;
     this.playing = true;
     this.restartClock();
+    this.updatePlayLabel();
     this.updateIndicator();
     this.frameId = requestAnimationFrame(() => this.frame());
   }
@@ -182,6 +190,7 @@ export class Timeline {
     cancelAnimationFrame(this.frameId);
     this.preview.stop();
     this.preview.show(this.t);
+    this.updatePlayLabel();
     this.updateIndicator();
   }
 

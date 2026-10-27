@@ -63,7 +63,7 @@ function bindSource(
   nameId: string,
   sampleUrl: string,
   set: (blob: Blob, name: string) => Promise<void>,
-): void {
+): () => Promise<void> {
   const nameLabel = $<HTMLSpanElement>(nameId);
   const apply = async (load: () => Promise<{ blob: Blob; name: string; label: string }>) => {
     try {
@@ -80,24 +80,26 @@ function bindSource(
     if (!file) return;
     void apply(async () => ({ blob: file, name: file.name, label: file.name }));
   });
-  $<HTMLButtonElement>(buttonId).addEventListener('click', () => {
-    void apply(async () => {
+  const loadSample = () =>
+    apply(async () => {
       const response = await fetch(sampleUrl);
       if (!response.ok) throw new Error(`${sampleUrl} の取得に失敗 (${response.status})`);
       const name = sampleUrl.split('/').pop()!;
       return { blob: await response.blob(), name, label: `${sampleUrl} (サンプル)` };
     });
-  });
+  $<HTMLButtonElement>(buttonId).addEventListener('click', () => void loadSample());
+  return loadSample;
 }
 
-bindSource('audio-file', 'audio-sample', 'audio-name', '/sample/maou_14_shining_star.mp3', async (blob, name) => {
+const loadAudioSample = bindSource('audio-file', 'audio-sample', 'audio-name', '/sample/maou_14_shining_star.mp3', async (blob, name) => {
   await timeline.setAudio(blob, name);
   audioFile = blob;
 });
-bindSource('video-file', 'video-sample', 'video-name', '/sample/sample.mp4', async (blob, name) => {
+const loadVideoSample = bindSource('video-file', 'video-sample', 'video-name', '/sample/sample.mp4', async (blob, name) => {
   await timeline.setStaticVideo(blob, name);
   videoFile = blob;
 });
+void Promise.all([loadAudioSample(), loadVideoSample()]);
 
 durationInput.addEventListener('input', () => {
   const sec = Number(durationInput.value);
