@@ -6,7 +6,7 @@ import { Timeline } from './timeline';
 
 const RESOLUTIONS = ['1920x1080', '1280x720', '854x480', '640x360'];
 const INITIAL_RESOLUTION = '1280x720';
-const INITIAL_BITRATE_KBPS = 2000;
+const INITIAL_BITRATE_KBPS = 1000;
 const INITIAL_TOTAL_SEC = 30;
 const INITIAL_DURATION_SEC = 3;
 const INITIAL_FPS = 30;
@@ -129,7 +129,7 @@ function bindSource(
   return loadSample;
 }
 
-const loadAudioSample = bindSource('audio-file', 'audio-sample', 'audio-name', '/sample/maou_14_shining_star.mp3', async (blob, name) => {
+const loadAudioSample = bindSource('audio-file', 'audio-sample', 'audio-name', '/sample/n123.mp3', async (blob, name) => {
   await timeline.setAudio(blob, name);
   audioFile = blob;
 });

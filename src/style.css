@@ -1,4 +1,4 @@
-/* Pico の main の上下余白は body 直下の main にしか効かないので #app 内の main に当てる */
+/* Pico は body 直下の main にだけ上下余白を付ける。#app の中にある main には付かないので、ここで指定する */
 main.container {
   padding-block: calc(var(--pico-spacing) * 3);
 }
