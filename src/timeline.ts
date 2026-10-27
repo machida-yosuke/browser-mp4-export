@@ -13,6 +13,7 @@ export class Timeline {
   private readonly videoLane: HTMLDivElement;
   private readonly audioLane: HTMLDivElement;
   private readonly playhead: HTMLDivElement;
+  private totalSec: number;
   private dynamicSec: number;
   private fps: number;
   private staticVideo: Source | null = null;
@@ -25,17 +26,26 @@ export class Timeline {
   private lastFrame = 0;
   private frameId = 0;
 
-  constructor(root: HTMLElement, preview: Preview, dynamicSec: number, fps: number) {
+  constructor(
+    roots: { transport: HTMLElement; tracks: HTMLElement },
+    preview: Preview,
+    totalSec: number,
+    dynamicSec: number,
+    fps: number,
+  ) {
     this.preview = preview;
+    this.totalSec = totalSec;
     this.dynamicSec = dynamicSec;
     this.fps = fps;
-    root.classList.add('timeline');
-    root.innerHTML = `
+    roots.transport.innerHTML = `
       <div class="transport">
         <button data-testid="play" type="button">再生</button>
         <span data-testid="time" class="time"></span>
       </div>
       <input data-testid="seek" type="range" min="0" step="${1 / fps}" value="0" />
+    `;
+    roots.tracks.classList.add('timeline');
+    roots.tracks.innerHTML = `
       <div class="tracks">
         <div class="track-labels"><span>映像</span><span>音声</span></div>
         <div data-testid="lanes" class="lanes">
@@ -45,14 +55,14 @@ export class Timeline {
         </div>
       </div>
     `;
-    const pick = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
-    this.playButton = pick('[data-testid=play]');
-    pick('[data-testid=time]').append(this.timeText);
-    this.seekBar = pick('[data-testid=seek]');
-    this.lanes = pick('[data-testid=lanes]');
-    this.videoLane = pick('[data-testid=video-lane]');
-    this.audioLane = pick('[data-testid=audio-lane]');
-    this.playhead = pick('.playhead');
+    const pick = <T extends HTMLElement>(root: HTMLElement, selector: string) => root.querySelector<T>(selector)!;
+    this.playButton = pick(roots.transport, '[data-testid=play]');
+    pick(roots.transport, '[data-testid=time]').append(this.timeText);
+    this.seekBar = pick(roots.transport, '[data-testid=seek]');
+    this.lanes = pick(roots.tracks, '[data-testid=lanes]');
+    this.videoLane = pick(roots.tracks, '[data-testid=video-lane]');
+    this.audioLane = pick(roots.tracks, '[data-testid=audio-lane]');
+    this.playhead = pick(roots.tracks, '.playhead');
 
     this.playButton.addEventListener('click', () => (this.playing ? this.pause() : this.play()));
     this.seekBar.addEventListener('input', () => this.seek(Number(this.seekBar.value)));
@@ -65,13 +75,16 @@ export class Timeline {
       if (this.lanes.hasPointerCapture(e.pointerId)) this.seekToPointer(e);
     });
 
-    this.preview.setDynamicDuration(dynamicSec);
+    this.layout();
+  }
+
+  setTotalDuration(sec: number): void {
+    this.totalSec = sec;
     this.layout();
   }
 
   setDynamicDuration(sec: number): void {
     this.dynamicSec = sec;
-    this.preview.setDynamicDuration(sec);
     this.layout();
   }
 
@@ -115,19 +128,25 @@ export class Timeline {
     if (enabled) this.preview.show(this.t);
   }
 
-  private get totalSec(): number {
-    return this.dynamicSec + (this.staticVideo?.durationSec ?? 0);
+  // 静的動画が無いときは動的パートで全体を埋める
+  private get effectiveDynamic(): number {
+    return this.staticVideo ? Math.min(this.dynamicSec, this.totalSec) : this.totalSec;
   }
 
   private layout(): void {
     const total = this.totalSec;
+    const dynamic = this.effectiveDynamic;
+    this.preview.setDynamicDuration(dynamic);
     this.t = Math.min(this.t, total);
     this.seekBar.max = String(total);
 
-    this.videoLane.replaceChildren(this.clip(`動的 (${formatSec(this.dynamicSec)} s)`, 0, this.dynamicSec));
-    if (this.staticVideo) {
+    this.videoLane.replaceChildren(this.clip(`動的 (${formatSec(dynamic)} s)`, 0, dynamic));
+    const staticLen = total - dynamic;
+    if (this.staticVideo && staticLen > 0) {
       const { name, durationSec } = this.staticVideo;
-      this.videoLane.append(this.clip(`静的: ${name} (${formatSec(durationSec)} s)`, this.dynamicSec, durationSec));
+      this.videoLane.append(
+        this.clip(`静的: ${name} (${formatSec(staticLen)} s / 元 ${formatSec(durationSec)} s)`, dynamic, staticLen),
+      );
     }
     this.audioLane.replaceChildren();
     if (this.audio) {

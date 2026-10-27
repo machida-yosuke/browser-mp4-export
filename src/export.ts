@@ -20,7 +20,8 @@ import { drawScene } from './scene';
 
 export type ExportOptions = {
   canvas: HTMLCanvasElement;
-  durationSec: number;
+  totalSec: number;
+  dynamicSec: number;
   fps: number;
   videoBitrateKbps: number;
   text: string;
@@ -31,7 +32,6 @@ export type ExportOptions = {
 
 type StaticClip = {
   videoTrack: InputVideoTrack;
-  durationSec: number;
 };
 
 const audioQuality = new Quality({ bitrate: 128e3 });
@@ -39,8 +39,8 @@ const audioQuality = new Quality({ bitrate: 128e3 });
 const TIMESTAMP_EPSILON_SEC = 1e-6;
 
 export async function exportVideo(options: ExportOptions): Promise<Blob> {
-  const { canvas, durationSec, fps, videoBitrateKbps, text, audioFile, videoFile, onProgress } = options;
-  if (!(durationSec > 0) || !(fps > 0)) throw new Error('秒数と fps は正の数で指定する');
+  const { canvas, totalSec, dynamicSec, fps, videoBitrateKbps, text, audioFile, videoFile, onProgress } = options;
+  if (!(totalSec > 0) || !(dynamicSec > 0) || !(fps > 0)) throw new Error('秒数と fps は正の数で指定する');
   if (!(videoBitrateKbps > 0)) throw new Error('映像ビットレートは正の数で指定する');
   const videoQuality = new Quality({ bitrate: videoBitrateKbps * 1000 });
 
@@ -63,7 +63,9 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
   const input = videoFile ? new Input({ formats: ALL_FORMATS, source: new BlobSource(videoFile) }) : null;
   try {
     const clip = input ? await openStaticClip(input) : null;
-    const totalDuration = durationSec + (clip?.durationSec ?? 0);
+    // 静的動画が無いときは動的パートで全体を埋める
+    const effectiveDynamic = clip ? Math.min(dynamicSec, totalSec) : totalSec;
+    const staticSec = totalSec - effectiveDynamic;
 
     const target = new BufferTarget();
     const output = new Output({ format: new Mp4OutputFormat(), target });
@@ -76,8 +78,10 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
 
     try {
       await Promise.all([
-        writeVideo(videoSource, ctx, canvas, durationSec, fps, text, clip, (t) => onProgress?.(t / totalDuration)),
-        writeAudio(audioSource, totalDuration, audioFile),
+        writeVideo(videoSource, ctx, canvas, effectiveDynamic, staticSec, fps, text, clip, (t) =>
+          onProgress?.(t / totalSec),
+        ),
+        writeAudio(audioSource, totalSec, audioFile),
       ]);
       await output.finalize();
     } catch (error) {
@@ -97,23 +101,22 @@ async function openStaticClip(input: Input): Promise<StaticClip> {
   const videoTrack = await input.getPrimaryVideoTrack();
   if (!videoTrack) throw new Error('静的動画に映像トラックが無い');
   if (!(await videoTrack.canDecode())) throw new Error('静的動画の映像をデコードできない');
-
-  const durationSec = (await videoTrack.computeDuration()) - (await videoTrack.getFirstTimestamp());
-  return { videoTrack, durationSec };
+  return { videoTrack };
 }
 
 async function writeVideo(
   source: CanvasSource,
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  durationSec: number,
+  dynamicSec: number,
+  staticSec: number,
   fps: number,
   text: string,
   clip: StaticClip | null,
   onTime: (t: number) => void,
 ): Promise<void> {
   const frameDuration = 1 / fps;
-  const frames = Math.round(durationSec * fps);
+  const frames = Math.round(dynamicSec * fps);
   for (let i = 0; i < frames; i++) {
     const t = i * frameDuration;
     drawScene(ctx, t, canvas.width, canvas.height, text);
@@ -122,7 +125,7 @@ async function writeVideo(
   }
 
   if (!clip) return;
-  const staticFrames = Math.round(clip.durationSec * fps);
+  const staticFrames = Math.round(staticSec * fps);
   const samples = new VideoSampleSink(clip.videoTrack).samples();
   let held: VideoSample | null = null;
   let next: VideoSample | null = null;
@@ -150,7 +153,7 @@ async function writeVideo(
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       held.drawWithFit(ctx, { fit: 'contain' });
-      const t = durationSec + local;
+      const t = dynamicSec + local;
       await source.add(t, frameDuration);
       onTime(t + frameDuration);
     }
@@ -161,10 +164,8 @@ async function writeVideo(
   }
 }
 
-async function writeAudio(source: AudioSampleSource, totalDuration: number, audioFile: Blob | undefined): Promise<void> {
-  const buffer = audioFile
-    ? await fitToTarget(await decodeAudioFile(audioFile), totalDuration)
-    : createSilence(totalDuration);
+async function writeAudio(source: AudioSampleSource, totalSec: number, audioFile: Blob | undefined): Promise<void> {
+  const buffer = audioFile ? await fitToTarget(await decodeAudioFile(audioFile), totalSec) : createSilence(totalSec);
   const samples = AudioSample.fromAudioBuffer(buffer, 0);
   try {
     for (const sample of samples) await source.add(sample);

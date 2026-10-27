@@ -1,3 +1,4 @@
+import '@picocss/pico/css/pico.min.css';
 import './style.css';
 import { exportVideo } from './export';
 import { Preview } from './preview';
@@ -6,45 +7,59 @@ import { Timeline } from './timeline';
 const RESOLUTIONS = ['1920x1080', '1280x720', '854x480', '640x360'];
 const INITIAL_RESOLUTION = '1280x720';
 const INITIAL_BITRATE_KBPS = 2000;
+const INITIAL_TOTAL_SEC = 30;
 const INITIAL_DURATION_SEC = 3;
 const INITIAL_FPS = 30;
-const INITIAL_TEXT = 'browser-mp4-export';
+const INITIAL_TEXT = 'ここにテキストが入る';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <h1>browser-mp4-export</h1>
-  <canvas id="canvas"></canvas>
-  <div id="timeline"></div>
-  <div class="controls">
-    <label class="text-field">テキスト <textarea id="text" rows="2">${INITIAL_TEXT}</textarea></label>
-    <div class="row">
-      <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="${INITIAL_DURATION_SEC}" /></label>
-      <label>フレームレート <input id="fps" type="number" min="1" max="120" step="1" value="${INITIAL_FPS}" /></label>
-      <label>解像度 <select id="resolution">${RESOLUTIONS.map((r) => `<option value="${r}"${r === INITIAL_RESOLUTION ? ' selected' : ''}>${r}</option>`).join('')}</select></label>
-      <label>映像ビットレート (kbps) <input id="bitrate" type="number" min="100" step="100" value="${INITIAL_BITRATE_KBPS}" /></label>
-    </div>
-    <fieldset>
-      <legend>音声 (mp3 / wav、動画全体に敷く)</legend>
-      <input id="audio-file" type="file" accept="audio/mpeg,audio/wav,.mp3,.wav" />
-      <button id="audio-sample" type="button">サンプルを使う</button>
-      <span id="audio-name">未指定</span>
-    </fieldset>
-    <fieldset>
-      <legend>静的パートの動画 (mp4)</legend>
-      <input id="video-file" type="file" accept="video/mp4,.mp4" />
-      <button id="video-sample" type="button">サンプルを使う</button>
-      <span id="video-name">未指定</span>
-    </fieldset>
+  <main class="container">
+    <article class="preview">
+      <canvas id="canvas"></canvas>
+      <div id="transport"></div>
+    </article>
+    <label>テキスト <textarea id="text" rows="2">${INITIAL_TEXT}</textarea></label>
+    <details id="advanced" class="advanced">
+      <summary>詳細設定</summary>
+      <div id="timeline"></div>
+      <div class="grid">
+        <label>全体の秒数 <input id="total" type="number" min="1" step="1" value="${INITIAL_TOTAL_SEC}" /></label>
+        <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="${INITIAL_DURATION_SEC}" /></label>
+        <label>フレームレート <input id="fps" type="number" min="1" max="120" step="1" value="${INITIAL_FPS}" /></label>
+      </div>
+      <div class="grid">
+        <label>解像度 <select id="resolution">${RESOLUTIONS.map((r) => `<option value="${r}"${r === INITIAL_RESOLUTION ? ' selected' : ''}>${r}</option>`).join('')}</select></label>
+        <label>映像ビットレート (kbps) <input id="bitrate" type="number" min="100" step="100" value="${INITIAL_BITRATE_KBPS}" /></label>
+      </div>
+      <fieldset>
+        <legend>音声 (mp3 / wav、動画全体に敷く)</legend>
+        <input id="audio-file" type="file" accept="audio/mpeg,audio/wav,.mp3,.wav" />
+        <div class="source-sample">
+          <button id="audio-sample" type="button" class="secondary outline">サンプルを使う</button>
+          <span id="audio-name">未指定</span>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>静的パートの動画 (mp4)</legend>
+        <input id="video-file" type="file" accept="video/mp4,.mp4" />
+        <div class="source-sample">
+          <button id="video-sample" type="button" class="secondary outline">サンプルを使う</button>
+          <span id="video-name">未指定</span>
+        </div>
+      </fieldset>
+    </details>
     <button id="export" type="button">書き出し</button>
     <p data-testid="status" id="status">待機中</p>
-  </div>
-  <div id="result" hidden>
-    <video id="result-video" controls></video>
-    <a id="download" download="browser-mp4-export.mp4">ダウンロード</a>
-  </div>
+    <section id="result" hidden>
+      <video id="result-video" controls></video>
+      <a id="download" role="button" class="secondary" download="browser-mp4-export.mp4">ダウンロード</a>
+    </section>
+  </main>
 `;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('canvas');
+const totalInput = $<HTMLInputElement>('total');
 const durationInput = $<HTMLInputElement>('duration');
 const fpsInput = $<HTMLInputElement>('fps');
 const resolutionSelect = $<HTMLSelectElement>('resolution');
@@ -52,7 +67,7 @@ const bitrateInput = $<HTMLInputElement>('bitrate');
 const textInput = $<HTMLTextAreaElement>('text');
 const exportButton = $<HTMLButtonElement>('export');
 const status = $<HTMLParagraphElement>('status');
-const result = $<HTMLDivElement>('result');
+const result = $<HTMLElement>('result');
 const resultVideo = $<HTMLVideoElement>('result-video');
 const download = $<HTMLAnchorElement>('download');
 
@@ -64,7 +79,13 @@ function applyResolution(value: string): void {
 applyResolution(resolutionSelect.value);
 let bitrateKbps = INITIAL_BITRATE_KBPS;
 
-const timeline = new Timeline($('timeline'), new Preview(canvas.getContext('2d')!), INITIAL_DURATION_SEC, INITIAL_FPS);
+const timeline = new Timeline(
+  { transport: $('transport'), tracks: $('timeline') },
+  new Preview(canvas.getContext('2d')!),
+  INITIAL_TOTAL_SEC,
+  INITIAL_DURATION_SEC,
+  INITIAL_FPS,
+);
 timeline.setText(textInput.value);
 
 let audioFile: Blob | undefined;
@@ -118,6 +139,11 @@ const loadVideoSample = bindSource('video-file', 'video-sample', 'video-name', '
 });
 void Promise.all([loadAudioSample(), loadVideoSample()]);
 
+totalInput.addEventListener('input', () => {
+  const sec = Number(totalInput.value);
+  if (sec > 0) timeline.setTotalDuration(sec);
+});
+
 durationInput.addEventListener('input', () => {
   const sec = Number(durationInput.value);
   if (sec > 0) timeline.setDynamicDuration(sec);
@@ -149,7 +175,8 @@ exportButton.addEventListener('click', async () => {
   try {
     const blob = await exportVideo({
       canvas,
-      durationSec: Number(durationInput.value),
+      totalSec: Number(totalInput.value),
+      dynamicSec: Number(durationInput.value),
       fps: Number(fpsInput.value),
       videoBitrateKbps: bitrateKbps,
       text: textInput.value,

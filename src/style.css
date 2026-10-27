@@ -1,93 +1,63 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  min-height: 100vh;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-}
-
-#app {
-  display: grid;
-  gap: 16px;
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 16px;
+/* Pico の main の上下余白は body 直下の main にしか効かないので #app 内の main に当てる */
+main.container {
+  padding-block: calc(var(--pico-spacing) * 3);
 }
 
 canvas,
 video {
+  display: block;
   width: 100%;
   height: auto;
   background: #000;
+  border-radius: var(--pico-border-radius);
 }
 
-.controls {
+.preview {
   display: grid;
-  gap: 8px;
+  gap: var(--pico-spacing);
 }
 
-.text-field {
-  display: grid;
-  gap: 4px;
-}
-
-.text-field textarea {
-  font: inherit;
-  padding: 4px;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-fieldset {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  padding: 8px;
-}
-
-#result {
-  display: grid;
-  gap: 8px;
-}
-
-#result[hidden] {
-  display: none;
-}
-
-.timeline {
-  display: grid;
-  gap: 8px;
+#transport [data-testid='seek'] {
+  margin-bottom: 0;
 }
 
 .transport {
   display: flex;
-  gap: 12px;
+  gap: var(--pico-spacing);
   align-items: center;
+}
+
+.transport button {
+  flex: none;
+  width: auto;
 }
 
 .time {
   font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
 }
 
-.timeline input[type='range'] {
+.source-sample {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pico-spacing);
+  align-items: center;
+}
+
+#export {
   width: 100%;
+}
+
+#result {
+  display: grid;
+  gap: var(--pico-spacing);
 }
 
 .tracks {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 8px;
+  margin-bottom: var(--pico-spacing);
 }
 
 .track-labels {
@@ -95,7 +65,7 @@ fieldset {
   grid-auto-rows: 32px;
   gap: 4px;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .lanes {
@@ -115,7 +85,8 @@ fieldset {
 
 .lane {
   position: relative;
-  background: #eee;
+  background: var(--pico-muted-border-color);
+  border-radius: 4px;
 }
 
 .clip {
@@ -124,17 +95,19 @@ fieldset {
   bottom: 0;
   overflow: hidden;
   padding: 0 6px;
-  border: 1px solid #fff;
-  background: #4a7bd0;
-  color: #fff;
-  font-size: 12px;
+  border: 1px solid var(--pico-background-color);
+  border-radius: 4px;
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+  font-size: 0.75rem;
   line-height: 30px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .lane + .lane .clip {
-  background: #3c9a6a;
+  background: var(--pico-ins-color);
+  color: #fff;
 }
 
 .playhead {
@@ -143,6 +116,6 @@ fieldset {
   bottom: -4px;
   width: 2px;
   margin-left: -1px;
-  background: #e33;
+  background: var(--pico-del-color);
   pointer-events: none;
 }
