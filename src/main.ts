@@ -1,18 +1,21 @@
 import './style.css';
 import { exportVideo } from './export';
-import { drawScene } from './scene';
+import { Preview } from './preview';
+import { Timeline } from './timeline';
 
 const WIDTH = 1280;
 const HEIGHT = 720;
 const FPS = 30;
+const INITIAL_DURATION_SEC = 3;
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <h1>guitarfish</h1>
+  <h1>browser-mp4-export</h1>
   <canvas id="canvas" width="${WIDTH}" height="${HEIGHT}"></canvas>
+  <div id="timeline"></div>
   <div class="controls">
-    <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="3" /></label>
+    <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="${INITIAL_DURATION_SEC}" /></label>
     <fieldset>
-      <legend>動的パートの音声 (mp3 / wav)</legend>
+      <legend>音声 (mp3 / wav、動画全体に敷く)</legend>
       <input id="audio-file" type="file" accept="audio/mpeg,audio/wav,.mp3,.wav" />
       <button id="audio-sample" type="button">サンプルを使う</button>
       <span id="audio-name">未指定</span>
@@ -28,7 +31,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </div>
   <div id="result" hidden>
     <video id="result-video" controls></video>
-    <a id="download" download="guitarfish.mp4">ダウンロード</a>
+    <a id="download" download="browser-mp4-export.mp4">ダウンロード</a>
   </div>
 `;
 
@@ -40,52 +43,65 @@ const status = $<HTMLParagraphElement>('status');
 const result = $<HTMLDivElement>('result');
 const resultVideo = $<HTMLVideoElement>('result-video');
 const download = $<HTMLAnchorElement>('download');
-const ctx = canvas.getContext('2d')!;
+
+const timeline = new Timeline($('timeline'), new Preview(canvas.getContext('2d')!), INITIAL_DURATION_SEC);
 
 let audioFile: Blob | undefined;
 let videoFile: Blob | undefined;
-let exporting = false;
 let resultUrl: string | null = null;
+
+const showError = (error: unknown) =>
+  (status.textContent = `エラー: ${error instanceof Error ? error.message : String(error)}`);
 
 function bindSource(
   inputId: string,
   buttonId: string,
   nameId: string,
   sampleUrl: string,
-  set: (blob: Blob) => void,
+  set: (blob: Blob, name: string) => Promise<void>,
 ): void {
-  const name = $<HTMLSpanElement>(nameId);
+  const nameLabel = $<HTMLSpanElement>(nameId);
+  const apply = async (load: () => Promise<{ blob: Blob; name: string; label: string }>) => {
+    try {
+      const { blob, name, label } = await load();
+      await set(blob, name);
+      nameLabel.textContent = label;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  };
   $<HTMLInputElement>(inputId).addEventListener('change', (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    set(file);
-    name.textContent = file.name;
+    void apply(async () => ({ blob: file, name: file.name, label: file.name }));
   });
-  $<HTMLButtonElement>(buttonId).addEventListener('click', async () => {
-    try {
+  $<HTMLButtonElement>(buttonId).addEventListener('click', () => {
+    void apply(async () => {
       const response = await fetch(sampleUrl);
       if (!response.ok) throw new Error(`${sampleUrl} の取得に失敗 (${response.status})`);
-      set(await response.blob());
-      name.textContent = `${sampleUrl} (サンプル)`;
-    } catch (error) {
-      status.textContent = `エラー: ${error instanceof Error ? error.message : String(error)}`;
-      throw error;
-    }
+      const name = sampleUrl.split('/').pop()!;
+      return { blob: await response.blob(), name, label: `${sampleUrl} (サンプル)` };
+    });
   });
 }
 
-bindSource('audio-file', 'audio-sample', 'audio-name', '/sample/tone.wav', (b) => (audioFile = b));
-bindSource('video-file', 'video-sample', 'video-name', '/sample/sample.mp4', (b) => (videoFile = b));
+bindSource('audio-file', 'audio-sample', 'audio-name', '/sample/maou_14_shining_star.mp3', async (blob, name) => {
+  await timeline.setAudio(blob, name);
+  audioFile = blob;
+});
+bindSource('video-file', 'video-sample', 'video-name', '/sample/sample.mp4', async (blob, name) => {
+  await timeline.setStaticVideo(blob, name);
+  videoFile = blob;
+});
 
-const startedAt = performance.now();
-function preview(): void {
-  if (!exporting) drawScene(ctx, (performance.now() - startedAt) / 1000, WIDTH, HEIGHT);
-  requestAnimationFrame(preview);
-}
-requestAnimationFrame(preview);
+durationInput.addEventListener('input', () => {
+  const sec = Number(durationInput.value);
+  if (sec > 0) timeline.setDynamicDuration(sec);
+});
 
 exportButton.addEventListener('click', async () => {
-  exporting = true;
+  timeline.setEnabled(false);
   exportButton.disabled = true;
   status.textContent = '書き出し中 0%';
   try {
@@ -104,10 +120,10 @@ exportButton.addEventListener('click', async () => {
     result.hidden = false;
     status.textContent = `書き出し完了 (${(blob.size / 1024 / 1024).toFixed(2)} MB)`;
   } catch (error) {
-    status.textContent = `エラー: ${error instanceof Error ? error.message : String(error)}`;
+    showError(error);
     throw error;
   } finally {
-    exporting = false;
     exportButton.disabled = false;
+    timeline.setEnabled(true);
   }
 });

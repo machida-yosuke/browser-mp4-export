@@ -48,3 +48,85 @@ fieldset {
 #result[hidden] {
   display: none;
 }
+
+.timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.transport {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline input[type='range'] {
+  width: 100%;
+}
+
+.tracks {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+}
+
+.track-labels {
+  display: grid;
+  grid-auto-rows: 32px;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.lanes {
+  position: relative;
+  display: grid;
+  grid-auto-rows: 32px;
+  gap: 4px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.lanes.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.lane {
+  position: relative;
+  background: #eee;
+}
+
+.clip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  padding: 0 6px;
+  border: 1px solid #fff;
+  background: #4a7bd0;
+  color: #fff;
+  font-size: 12px;
+  line-height: 30px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lane + .lane .clip {
+  background: #3c9a6a;
+}
+
+.playhead {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: #e33;
+  pointer-events: none;
+}

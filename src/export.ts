@@ -1,13 +1,11 @@
 import {
   ALL_FORMATS,
   AudioSample,
-  AudioSampleSink,
   AudioSampleSource,
   BlobSource,
   BufferTarget,
   CanvasSource,
   Input,
-  type InputAudioTrack,
   type InputVideoTrack,
   Mp4OutputFormat,
   Output,
@@ -16,15 +14,7 @@ import {
   canEncodeAudio,
   canEncodeVideo,
 } from 'mediabunny';
-import {
-  TARGET_CHANNELS,
-  TARGET_SAMPLE_RATE,
-  type TimedAudioBuffer,
-  createSilence,
-  decodeAudioFile,
-  fitToTarget,
-  placeAudioBuffers,
-} from './audio';
+import { TARGET_CHANNELS, TARGET_SAMPLE_RATE, createSilence, decodeAudioFile, fitToTarget } from './audio';
 import { drawScene } from './scene';
 
 export type ExportOptions = {
@@ -38,8 +28,6 @@ export type ExportOptions = {
 
 type StaticClip = {
   videoTrack: InputVideoTrack;
-  audioTrack: InputAudioTrack | null;
-  startTimestamp: number;
   durationSec: number;
 };
 
@@ -83,7 +71,7 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
     try {
       await Promise.all([
         writeVideo(videoSource, ctx, canvas, durationSec, fps, clip, (t) => onProgress?.(t / totalDuration)),
-        writeAudio(audioSource, durationSec, audioFile, clip),
+        writeAudio(audioSource, totalDuration, audioFile),
       ]);
       await output.finalize();
     } catch (error) {
@@ -104,12 +92,8 @@ async function openStaticClip(input: Input): Promise<StaticClip> {
   if (!videoTrack) throw new Error('静的動画に映像トラックが無い');
   if (!(await videoTrack.canDecode())) throw new Error('静的動画の映像をデコードできない');
 
-  const audioTrack = await input.getPrimaryAudioTrack();
-  if (audioTrack && !(await audioTrack.canDecode())) throw new Error('静的動画の音声をデコードできない');
-
-  const startTimestamp = await videoTrack.getFirstTimestamp();
-  const durationSec = (await videoTrack.computeDuration()) - startTimestamp;
-  return { videoTrack, audioTrack, startTimestamp, durationSec };
+  const durationSec = (await videoTrack.computeDuration()) - (await videoTrack.getFirstTimestamp());
+  return { videoTrack, durationSec };
 }
 
 async function writeVideo(
@@ -148,55 +132,11 @@ async function writeVideo(
   }
 }
 
-async function writeAudio(
-  source: AudioSampleSource,
-  durationSec: number,
-  audioFile: Blob | undefined,
-  clip: StaticClip | null,
-): Promise<void> {
-  const dynamicBuffer = audioFile
-    ? await fitToTarget(await decodeAudioFile(audioFile), durationSec)
-    : createSilence(durationSec);
-  await addAudioBuffer(source, dynamicBuffer, 0);
-
-  if (!clip) return;
-  if (!clip.audioTrack) {
-    await addAudioBuffer(source, createSilence(clip.durationSec), durationSec);
-    return;
-  }
-
-  // AAC の先頭にはプライミング用の負のタイムスタンプのサンプルがあり、音声の先頭基準にすると映像とずれるため映像の先頭を基準にして捨てる
-  const sink = new AudioSampleSink(clip.audioTrack);
-  let received = false;
-  let passThrough: boolean | null = null;
-  const pending: TimedAudioBuffer[] = [];
-  for await (const sample of sink.samples(clip.startTimestamp, clip.startTimestamp + clip.durationSec)) {
-    try {
-      const relative = sample.timestamp - clip.startTimestamp;
-      if (relative < 0) continue;
-      received = true;
-      passThrough ??= sample.sampleRate === TARGET_SAMPLE_RATE && sample.numberOfChannels === TARGET_CHANNELS;
-      if (passThrough) {
-        sample.setTimestamp(durationSec + relative);
-        await source.add(sample);
-      } else {
-        pending.push({ buffer: sample.toAudioBuffer(), timestamp: relative });
-      }
-    } finally {
-      sample.close();
-    }
-  }
-
-  if (!received) {
-    await addAudioBuffer(source, createSilence(clip.durationSec), durationSec);
-  } else if (pending.length > 0) {
-    const merged = placeAudioBuffers(pending);
-    await addAudioBuffer(source, await fitToTarget(merged, merged.duration), durationSec);
-  }
-}
-
-async function addAudioBuffer(source: AudioSampleSource, buffer: AudioBuffer, timestamp: number): Promise<void> {
-  const samples = AudioSample.fromAudioBuffer(buffer, timestamp);
+async function writeAudio(source: AudioSampleSource, totalDuration: number, audioFile: Blob | undefined): Promise<void> {
+  const buffer = audioFile
+    ? await fitToTarget(await decodeAudioFile(audioFile), totalDuration)
+    : createSilence(totalDuration);
+  const samples = AudioSample.fromAudioBuffer(buffer, 0);
   try {
     for (const sample of samples) await source.add(sample);
   } finally {
