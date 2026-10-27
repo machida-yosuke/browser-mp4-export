@@ -1,0 +1,50 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+#app {
+  display: grid;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+canvas,
+video {
+  width: 100%;
+  height: auto;
+  background: #000;
+}
+
+.controls {
+  display: grid;
+  gap: 8px;
+}
+
+fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+}
+
+#result {
+  display: grid;
+  gap: 8px;
+}
+
+#result[hidden] {
+  display: none;
+}
