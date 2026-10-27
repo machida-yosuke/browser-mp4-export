@@ -3,19 +3,24 @@ import { exportVideo } from './export';
 import { Preview } from './preview';
 import { Timeline } from './timeline';
 
-const WIDTH = 1280;
-const HEIGHT = 720;
+const RESOLUTIONS = ['1920x1080', '1280x720', '854x480', '640x360'];
+const INITIAL_RESOLUTION = '1280x720';
+const INITIAL_BITRATE_KBPS = 2000;
 const INITIAL_DURATION_SEC = 3;
 const INITIAL_FPS = 30;
+const INITIAL_TEXT = 'browser-mp4-export';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <h1>browser-mp4-export</h1>
-  <canvas id="canvas" width="${WIDTH}" height="${HEIGHT}"></canvas>
+  <canvas id="canvas"></canvas>
   <div id="timeline"></div>
   <div class="controls">
+    <label class="text-field">テキスト <textarea id="text" rows="2">${INITIAL_TEXT}</textarea></label>
     <div class="row">
       <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="${INITIAL_DURATION_SEC}" /></label>
       <label>フレームレート <input id="fps" type="number" min="1" max="120" step="1" value="${INITIAL_FPS}" /></label>
+      <label>解像度 <select id="resolution">${RESOLUTIONS.map((r) => `<option value="${r}"${r === INITIAL_RESOLUTION ? ' selected' : ''}>${r}</option>`).join('')}</select></label>
+      <label>映像ビットレート (kbps) <input id="bitrate" type="number" min="100" step="100" value="${INITIAL_BITRATE_KBPS}" /></label>
     </div>
     <fieldset>
       <legend>音声 (mp3 / wav、動画全体に敷く)</legend>
@@ -42,13 +47,25 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const canvas = $<HTMLCanvasElement>('canvas');
 const durationInput = $<HTMLInputElement>('duration');
 const fpsInput = $<HTMLInputElement>('fps');
+const resolutionSelect = $<HTMLSelectElement>('resolution');
+const bitrateInput = $<HTMLInputElement>('bitrate');
+const textInput = $<HTMLTextAreaElement>('text');
 const exportButton = $<HTMLButtonElement>('export');
 const status = $<HTMLParagraphElement>('status');
 const result = $<HTMLDivElement>('result');
 const resultVideo = $<HTMLVideoElement>('result-video');
 const download = $<HTMLAnchorElement>('download');
 
+function applyResolution(value: string): void {
+  const [width, height] = value.split('x').map(Number);
+  canvas.width = width;
+  canvas.height = height;
+}
+applyResolution(resolutionSelect.value);
+let bitrateKbps = INITIAL_BITRATE_KBPS;
+
 const timeline = new Timeline($('timeline'), new Preview(canvas.getContext('2d')!), INITIAL_DURATION_SEC, INITIAL_FPS);
+timeline.setText(textInput.value);
 
 let audioFile: Blob | undefined;
 let videoFile: Blob | undefined;
@@ -106,20 +123,36 @@ durationInput.addEventListener('input', () => {
   if (sec > 0) timeline.setDynamicDuration(sec);
 });
 
+textInput.addEventListener('input', () => timeline.setText(textInput.value));
+
 fpsInput.addEventListener('input', () => {
   const fps = Number(fpsInput.value);
   if (fps >= 1) timeline.setFps(fps);
 });
 
+resolutionSelect.addEventListener('change', () => {
+  applyResolution(resolutionSelect.value);
+  timeline.refresh();
+});
+
+bitrateInput.addEventListener('input', () => {
+  const kbps = Number(bitrateInput.value);
+  if (kbps >= 1) bitrateKbps = kbps;
+});
+
 exportButton.addEventListener('click', async () => {
   timeline.setEnabled(false);
   exportButton.disabled = true;
+  // 書き出し中に canvas のサイズが変わると、エンコード途中でフレームの寸法が変わってしまう
+  resolutionSelect.disabled = true;
   status.textContent = '書き出し中 0%';
   try {
     const blob = await exportVideo({
       canvas,
       durationSec: Number(durationInput.value),
       fps: Number(fpsInput.value),
+      videoBitrateKbps: bitrateKbps,
+      text: textInput.value,
       audioFile,
       videoFile,
       onProgress: (ratio) => (status.textContent = `書き出し中 ${Math.min(100, Math.round(ratio * 100))}%`),
@@ -135,6 +168,7 @@ exportButton.addEventListener('click', async () => {
     throw error;
   } finally {
     exportButton.disabled = false;
+    resolutionSelect.disabled = false;
     timeline.setEnabled(true);
   }
 });

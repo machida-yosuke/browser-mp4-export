@@ -22,6 +22,8 @@ export type ExportOptions = {
   canvas: HTMLCanvasElement;
   durationSec: number;
   fps: number;
+  videoBitrateKbps: number;
+  text: string;
   audioFile?: Blob;
   videoFile?: Blob;
   onProgress?: (ratio: number) => void;
@@ -32,14 +34,15 @@ type StaticClip = {
   durationSec: number;
 };
 
-const videoQuality = new Quality('high');
 const audioQuality = new Quality({ bitrate: 128e3 });
 // 元動画のタイムスタンプと i / fps の比較で、丸め誤差によって同時刻のサンプルを取りこぼさないための許容幅
 const TIMESTAMP_EPSILON_SEC = 1e-6;
 
 export async function exportVideo(options: ExportOptions): Promise<Blob> {
-  const { canvas, durationSec, fps, audioFile, videoFile, onProgress } = options;
+  const { canvas, durationSec, fps, videoBitrateKbps, text, audioFile, videoFile, onProgress } = options;
   if (!(durationSec > 0) || !(fps > 0)) throw new Error('秒数と fps は正の数で指定する');
+  if (!(videoBitrateKbps > 0)) throw new Error('映像ビットレートは正の数で指定する');
+  const videoQuality = new Quality({ bitrate: videoBitrateKbps * 1000 });
 
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D コンテキストを取得できない');
@@ -73,7 +76,7 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
 
     try {
       await Promise.all([
-        writeVideo(videoSource, ctx, canvas, durationSec, fps, clip, (t) => onProgress?.(t / totalDuration)),
+        writeVideo(videoSource, ctx, canvas, durationSec, fps, text, clip, (t) => onProgress?.(t / totalDuration)),
         writeAudio(audioSource, totalDuration, audioFile),
       ]);
       await output.finalize();
@@ -105,6 +108,7 @@ async function writeVideo(
   canvas: HTMLCanvasElement,
   durationSec: number,
   fps: number,
+  text: string,
   clip: StaticClip | null,
   onTime: (t: number) => void,
 ): Promise<void> {
@@ -112,7 +116,7 @@ async function writeVideo(
   const frames = Math.round(durationSec * fps);
   for (let i = 0; i < frames; i++) {
     const t = i * frameDuration;
-    drawScene(ctx, t, canvas.width, canvas.height);
+    drawScene(ctx, t, canvas.width, canvas.height, text);
     await source.add(t, frameDuration);
     onTime(t + frameDuration);
   }

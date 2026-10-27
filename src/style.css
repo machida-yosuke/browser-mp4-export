@@ -32,6 +32,16 @@ video {
   gap: 8px;
 }
 
+.text-field {
+  display: grid;
+  gap: 4px;
+}
+
+.text-field textarea {
+  font: inherit;
+  padding: 4px;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

@@ -31,13 +31,12 @@ function play(media: HTMLMediaElement): void {
 
 export class Preview {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly width: number;
-  private readonly height: number;
   private readonly video = document.createElement('video');
   private readonly audio = document.createElement('audio');
   private videoUrl: string | null = null;
   private audioUrl: string | null = null;
   private dynamicSec = 0;
+  private text = '';
   private playing = false;
   private active = true;
   private showingVideo = false;
@@ -46,8 +45,6 @@ export class Preview {
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
-    this.width = ctx.canvas.width;
-    this.height = ctx.canvas.height;
     this.video.muted = true;
     this.video.playsInline = true;
     this.video.preload = 'auto';
@@ -57,6 +54,10 @@ export class Preview {
 
   setDynamicDuration(sec: number): void {
     this.dynamicSec = sec;
+  }
+
+  setText(text: string): void {
+    this.text = text;
   }
 
   async loadVideo(blob: Blob): Promise<number> {
@@ -81,7 +82,7 @@ export class Preview {
     this.syncAudioPosition(t);
     if (this.isDynamic(t)) {
       this.showingVideo = false;
-      drawScene(this.ctx, t, this.width, this.height);
+      drawScene(this.ctx, t, this.ctx.canvas.width, this.ctx.canvas.height, this.text);
       return;
     }
     this.showingVideo = true;
@@ -105,7 +106,7 @@ export class Preview {
     if (this.isDynamic(t)) {
       this.showingVideo = false;
       if (!this.video.paused) this.video.pause();
-      drawScene(this.ctx, t, this.width, this.height);
+      drawScene(this.ctx, t, this.ctx.canvas.width, this.ctx.canvas.height, this.text);
       return;
     }
     this.showingVideo = true;
@@ -155,11 +156,12 @@ export class Preview {
   private drawVideo(): void {
     if (this.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
     const { videoWidth, videoHeight } = this.video;
-    const scale = Math.min(this.width / videoWidth, this.height / videoHeight);
+    const { width, height } = this.ctx.canvas;
+    const scale = Math.min(width / videoWidth, height / videoHeight);
     const w = videoWidth * scale;
     const h = videoHeight * scale;
     this.ctx.fillStyle = '#000';
-    this.ctx.fillRect(0, 0, this.width, this.height);
-    this.ctx.drawImage(this.video, (this.width - w) / 2, (this.height - h) / 2, w, h);
+    this.ctx.fillRect(0, 0, width, height);
+    this.ctx.drawImage(this.video, (width - w) / 2, (height - h) / 2, w, h);
   }
 }

@@ -84,6 +84,15 @@ export class Timeline {
     this.updateIndicator();
   }
 
+  setText(text: string): void {
+    this.preview.setText(text);
+    if (!this.playing) this.preview.show(this.t);
+  }
+
+  refresh(): void {
+    if (!this.playing) this.preview.show(this.t);
+  }
+
   async setStaticVideo(blob: Blob, name: string): Promise<void> {
     this.pause();
     this.staticVideo = { name, durationSec: await this.preview.loadVideo(blob) };
@@ -153,9 +162,9 @@ export class Timeline {
     this.playhead.style.left = `${(this.t / total) * 100}%`;
   }
 
-  // 再生中にボタンのラベルを毎フレーム書き換えると、Safari で停止の click が届かない。
-  // WebKit は mousedown 時に押されたテキストノードを記憶し、
-  // mouseup 時にそのノードが文書から外れていると click を発火しないため。
+  // 再生ボタンの文字は毎フレーム書き換えない。書き換えると Safari で停止ボタンが効かなくなる。
+  // 文字を書き換えるたびに、ボタン内のテキストノードは新しいノードに置き換わる。
+  // WebKit は、ボタンを押したときと離したときでテキストノードが別だと click を発生させない。
   private updatePlayLabel(): void {
     this.playButton.textContent = this.playing ? '停止' : '再生';
   }
