@@ -5,15 +5,18 @@ import { Timeline } from './timeline';
 
 const WIDTH = 1280;
 const HEIGHT = 720;
-const FPS = 30;
 const INITIAL_DURATION_SEC = 3;
+const INITIAL_FPS = 30;
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <h1>browser-mp4-export</h1>
   <canvas id="canvas" width="${WIDTH}" height="${HEIGHT}"></canvas>
   <div id="timeline"></div>
   <div class="controls">
-    <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="${INITIAL_DURATION_SEC}" /></label>
+    <div class="row">
+      <label>動的パートの秒数 <input id="duration" type="number" min="0.5" step="0.5" value="${INITIAL_DURATION_SEC}" /></label>
+      <label>フレームレート <input id="fps" type="number" min="1" max="120" step="1" value="${INITIAL_FPS}" /></label>
+    </div>
     <fieldset>
       <legend>音声 (mp3 / wav、動画全体に敷く)</legend>
       <input id="audio-file" type="file" accept="audio/mpeg,audio/wav,.mp3,.wav" />
@@ -38,13 +41,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('canvas');
 const durationInput = $<HTMLInputElement>('duration');
+const fpsInput = $<HTMLInputElement>('fps');
 const exportButton = $<HTMLButtonElement>('export');
 const status = $<HTMLParagraphElement>('status');
 const result = $<HTMLDivElement>('result');
 const resultVideo = $<HTMLVideoElement>('result-video');
 const download = $<HTMLAnchorElement>('download');
 
-const timeline = new Timeline($('timeline'), new Preview(canvas.getContext('2d')!), INITIAL_DURATION_SEC);
+const timeline = new Timeline($('timeline'), new Preview(canvas.getContext('2d')!), INITIAL_DURATION_SEC, INITIAL_FPS);
 
 let audioFile: Blob | undefined;
 let videoFile: Blob | undefined;
@@ -100,6 +104,11 @@ durationInput.addEventListener('input', () => {
   if (sec > 0) timeline.setDynamicDuration(sec);
 });
 
+fpsInput.addEventListener('input', () => {
+  const fps = Number(fpsInput.value);
+  if (fps >= 1) timeline.setFps(fps);
+});
+
 exportButton.addEventListener('click', async () => {
   timeline.setEnabled(false);
   exportButton.disabled = true;
@@ -108,7 +117,7 @@ exportButton.addEventListener('click', async () => {
     const blob = await exportVideo({
       canvas,
       durationSec: Number(durationInput.value),
-      fps: FPS,
+      fps: Number(fpsInput.value),
       audioFile,
       videoFile,
       onProgress: (ratio) => (status.textContent = `書き出し中 ${Math.min(100, Math.round(ratio * 100))}%`),

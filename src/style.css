@@ -32,6 +32,12 @@ video {
   gap: 8px;
 }
 
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
 fieldset {
   display: flex;
   flex-wrap: wrap;

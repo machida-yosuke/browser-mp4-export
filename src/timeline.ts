@@ -14,24 +14,28 @@ export class Timeline {
   private readonly audioLane: HTMLDivElement;
   private readonly playhead: HTMLDivElement;
   private dynamicSec: number;
+  private fps: number;
   private staticVideo: Source | null = null;
   private audio: Source | null = null;
   private t = 0;
   private enabled = true;
   private playing = false;
   private clockOrigin = 0;
+  private startFrame = 0;
+  private lastFrame = 0;
   private frameId = 0;
 
-  constructor(root: HTMLElement, preview: Preview, dynamicSec: number) {
+  constructor(root: HTMLElement, preview: Preview, dynamicSec: number, fps: number) {
     this.preview = preview;
     this.dynamicSec = dynamicSec;
+    this.fps = fps;
     root.classList.add('timeline');
     root.innerHTML = `
       <div class="transport">
         <button data-testid="play" type="button">再生</button>
         <span data-testid="time" class="time"></span>
       </div>
-      <input data-testid="seek" type="range" min="0" step="0.01" value="0" />
+      <input data-testid="seek" type="range" min="0" step="${1 / fps}" value="0" />
       <div class="tracks">
         <div class="track-labels"><span>映像</span><span>音声</span></div>
         <div data-testid="lanes" class="lanes">
@@ -69,6 +73,15 @@ export class Timeline {
     this.dynamicSec = sec;
     this.preview.setDynamicDuration(sec);
     this.layout();
+  }
+
+  setFps(fps: number): void {
+    this.fps = fps;
+    this.seekBar.step = String(1 / fps);
+    this.t = Math.min(this.snap(this.t), this.totalSec);
+    if (this.playing) this.restartClock();
+    else this.preview.show(this.t);
+    this.updateIndicator();
   }
 
   async setStaticVideo(blob: Blob, name: string): Promise<void> {
@@ -132,7 +145,9 @@ export class Timeline {
 
   private updateIndicator(): void {
     const total = this.totalSec;
-    this.time.textContent = `${formatSec(this.t)} / ${formatSec(total)} s`;
+    const frame = Math.round(this.t * this.fps);
+    const totalFrames = Math.round(total * this.fps);
+    this.time.textContent = `${formatSec(this.t)} / ${formatSec(total)} s (${frame} / ${totalFrames} f)`;
     this.seekBar.value = String(this.t);
     this.playhead.style.left = `${(this.t / total) * 100}%`;
     this.playButton.textContent = this.playing ? '停止' : '再生';
@@ -146,7 +161,7 @@ export class Timeline {
 
   private seek(t: number): void {
     if (!this.enabled) return;
-    this.t = Math.min(Math.max(0, t), this.totalSec);
+    this.t = Math.min(Math.max(0, this.snap(t)), this.totalSec);
     if (this.playing) this.restartClock();
     else this.preview.show(this.t);
     this.updateIndicator();
@@ -170,20 +185,32 @@ export class Timeline {
     this.updateIndicator();
   }
 
+  private snap(t: number): number {
+    return Math.round(t * this.fps) / this.fps;
+  }
+
   private restartClock(): void {
-    this.clockOrigin = performance.now() - this.t * 1000;
+    // 開始フレームを整数で持ち、t * fps の浮動小数誤差で 1 フレーム戻るのを防ぐ
+    this.startFrame = Math.round(this.t * this.fps);
+    this.lastFrame = this.startFrame;
+    this.clockOrigin = performance.now();
     this.preview.start(this.t);
   }
 
   private frame(): void {
-    const total = this.totalSec;
-    this.t = Math.min((performance.now() - this.clockOrigin) / 1000, total);
-    if (this.t >= total) {
-      this.pause();
-      return;
+    const elapsedSec = (performance.now() - this.clockOrigin) / 1000;
+    const frame = this.startFrame + Math.floor(elapsedSec * this.fps);
+    if (frame !== this.lastFrame) {
+      this.lastFrame = frame;
+      const total = this.totalSec;
+      this.t = Math.min(frame / this.fps, total);
+      if (this.t >= total) {
+        this.pause();
+        return;
+      }
+      this.preview.tick(this.t);
+      this.updateIndicator();
     }
-    this.preview.tick(this.t);
-    this.updateIndicator();
     this.frameId = requestAnimationFrame(() => this.frame());
   }
 }

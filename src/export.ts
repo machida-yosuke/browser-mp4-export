@@ -10,6 +10,7 @@ import {
   Mp4OutputFormat,
   Output,
   Quality,
+  type VideoSample,
   VideoSampleSink,
   canEncodeAudio,
   canEncodeVideo,
@@ -33,6 +34,8 @@ type StaticClip = {
 
 const videoQuality = new Quality('high');
 const audioQuality = new Quality({ bitrate: 128e3 });
+// 元動画のタイムスタンプと i / fps の比較で、丸め誤差によって同時刻のサンプルを取りこぼさないための許容幅
+const TIMESTAMP_EPSILON_SEC = 1e-6;
 
 export async function exportVideo(options: ExportOptions): Promise<Blob> {
   const { canvas, durationSec, fps, audioFile, videoFile, onProgress } = options;
@@ -115,20 +118,42 @@ async function writeVideo(
   }
 
   if (!clip) return;
-  const sink = new VideoSampleSink(clip.videoTrack);
-  let firstTimestamp: number | null = null;
-  for await (const sample of sink.samples()) {
-    try {
-      firstTimestamp ??= sample.timestamp;
-      const t = durationSec + (sample.timestamp - firstTimestamp);
+  const staticFrames = Math.round(clip.durationSec * fps);
+  const samples = new VideoSampleSink(clip.videoTrack).samples();
+  let held: VideoSample | null = null;
+  let next: VideoSample | null = null;
+  let firstTimestamp = 0;
+  let exhausted = false;
+  try {
+    for (let i = 0; i < staticFrames; i++) {
+      const local = i * frameDuration;
+      while (!exhausted) {
+        if (!next) {
+          const result = await samples.next();
+          if (result.done) {
+            exhausted = true;
+            break;
+          }
+          next = result.value;
+          if (!held) firstTimestamp = next.timestamp;
+        }
+        if (next.timestamp - firstTimestamp > local + TIMESTAMP_EPSILON_SEC) break;
+        held?.close();
+        held = next;
+        next = null;
+      }
+      if (!held) throw new Error('静的動画に映像フレームが無い');
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      sample.drawWithFit(ctx, { fit: 'contain' });
-      await source.add(t, sample.duration);
-      onTime(t + sample.duration);
-    } finally {
-      sample.close();
+      held.drawWithFit(ctx, { fit: 'contain' });
+      const t = durationSec + local;
+      await source.add(t, frameDuration);
+      onTime(t + frameDuration);
     }
+  } finally {
+    held?.close();
+    next?.close();
+    await samples.return();
   }
 }
 
